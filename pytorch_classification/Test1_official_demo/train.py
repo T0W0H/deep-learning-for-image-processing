@@ -1,71 +1,240 @@
-import torch
-import torchvision
-import torch.nn as nn
-from model import LeNet
-import torch.optim as optim
-import torchvision.transforms as transforms
+# =============================================================================
+# train.py —— 训练 LeNet 网络
+#
+# 【这个文件干什么】
+#   用 CIFAR10 数据集（6 万张 32x32 的彩色图片，10 个类别）训练 LeNet，
+#   训练结束后把学到的参数保存到 Lenet.pth 文件里。
+#
+# 【训练的本质（一句话版）】
+#   网络里有几十万个参数（卷积核里的数、权重矩阵里的数），初始是随机的。
+#   训练 = 反复做下面这件事：
+#     1. 喂一批图片给网络 → 得到 10 个类别的得分
+#     2. 计算"预测得有多差"（损失函数，越小越好）
+#     3. 用链式法则求出"每个参数该往哪个方向调、调多少"（反向传播）
+#     4. 按梯度下降法更新参数（optimizer.step()）
+#   重复几万次后，网络就能学会分类了。
+# =============================================================================
+
+import torch                       # PyTorch 主库
+import torchvision                 # 常用数据集和模型的库
+import torch.nn as nn              # 神经网络构件（LeNet、损失函数等）
+from model import LeNet            # 从 model.py 导入我们自己定义的 LeNet
+import torch.optim as optim        # 优化器库（梯度下降的各种变体）
+import torchvision.transforms as transforms  # 图片预处理工具
 
 
 def main():
+    # ----------------------------------------------------------------------
+    # transforms.Compose：把一系列预处理"串起来"，按顺序依次对图片执行。
+    # 这里做两步：
+    #   1) ToTensor()：把 PIL 图片转成 PyTorch 张量（Tensor，即多维数组）。
+    #      PIL 图片存的是 [高H, 宽W, 通道C]，每个像素 0~255 的整数；
+    #      转成张量后变成 [C, H, W]，且数值除以 255 变成 0~1 的小数。
+    #      注意通道从最后挪到最前面！这是 PyTorch 的约定。
+    #   2) Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))：
+    #      对每个通道做标准化：(x - 0.5) / 0.5，把 0~1 的数据变成 -1~1。
+    #      （这里均值 0.5、标准差 0.5 是随便定的，对 CIFAR10 够用。）
+    #      为什么要标准化？让数据的分布居中、尺度统一，
+    #      梯度下降收敛得更快更稳（数据太极端会导致梯度爆炸/消失）。
+    # ----------------------------------------------------------------------
     transform = transforms.Compose(
         [transforms.ToTensor(),
          transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
     # 50000张训练图片
     # 第一次使用时要将download设置为True才会自动去下载数据集
+    # ----------------------------------------------------------------------
+    # torchvision.datasets.CIFAR10：自动下载/加载 CIFAR10 数据集。
+    #   root='./data'  数据存放路径
+    #   train=True     加载训练集（5 万张）；False 是验证集（1 万张）
+    #   transform      上面定义好的预处理，每张图取出来时自动套用
+    # ----------------------------------------------------------------------
     train_set = torchvision.datasets.CIFAR10(root='./data', train=True,
                                              download=False, transform=transform)
+
+    # ----------------------------------------------------------------------
+    # DataLoader：数据加载器。它按 batch_size 把数据集切成一批一批。
+    #   batch_size=36：每批 36 张图。训练时我们不是一张一张喂，
+    #   而是 36 张一起喂（并行计算，效率高）。
+    #   shuffle=True：每轮(epoch)开始前把 5 万张图随机打乱再分批。
+    #     为什么要打乱？让每个 batch 近似"独立同分布"（i.i.d.）——
+    #     如果数据按类别顺序排列，网络会"背顺序"而不是学特征。
+    #     随机打乱 ≈ 从总体中随机抽样，这是统计学习里最基本的假设。
+    #   num_workers=0：用几个进程预读取数据，0 表示不额外开进程（简单）。
+    # ----------------------------------------------------------------------
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=36,
                                                shuffle=True, num_workers=0)
 
     # 10000张验证图片
     # 第一次使用时要将download设置为True才会自动去下载数据集
+    # 验证集：训练中用来检查"网络现在学得怎么样了"的独立数据。
+    # 注意验证集 shuffle=False：验证时顺序无所谓，不需要打乱。
     val_set = torchvision.datasets.CIFAR10(root='./data', train=False,
                                            download=False, transform=transform)
+
+    # batch_size=5000：验证时把 1 万张图分成 2 批，每批 5000 张。
     val_loader = torch.utils.data.DataLoader(val_set, batch_size=5000,
                                              shuffle=False, num_workers=0)
+
+    # 【Python 迭代器知识】
+    # iter(loader)：把 loader 变成一个"迭代器"对象（一个可依次取数的东西）。
+    # next(迭代器)：取出下一个元素。每次 next 会拿到一个 batch。
+    # 这里只取一个 batch（5000 张图）出来存着，专门用来在训练过程中
+    # 随时测准确率 —— 这样不用每 500 步都遍历一遍整个验证集（太慢）。
     val_data_iter = iter(val_loader)
     val_image, val_label = next(val_data_iter)
-    
+
     # classes = ('plane', 'car', 'bird', 'cat',
     #            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+    # CIFAR10 的 10 个类别（已注释掉，因为训练时用不到名字，只有编号）
 
-    net = LeNet()
+    net = LeNet()  # 创建网络（参数此刻是随机初始化的）
+
+    # ----------------------------------------------------------------------
+    # 【核心概率概念 1：交叉熵损失函数 CrossEntropyLoss】
+    #
+    # 损失函数衡量"网络预测得有多差"，训练的目标就是让损失尽量小。
+    #
+    # 网络最后输出 10 个原始得分 z = (z_0, ..., z_9)（logits），
+    # 但它们不是概率（可能为负、也可能大于 1）。
+    # 交叉熵损失内部先做 softmax，把得分变成真正的概率分布：
+    #
+    #     p_i = exp(z_i) / Σ_{j=0}^{9} exp(z_j)
+    #
+    # 即：先取指数（把负数也变成正数），再除以所有项之和做归一化。
+    # 结果保证：p_i ≥ 0，且 p_0 + ... + p_9 = 1。
+    # p_i 可以理解为"网络认为这张图属于第 i 类的概率"。
+    #
+    # 对一张真实类别为 y 的图，交叉熵损失定义为：
+    #
+    #     Loss = -log(p_y)
+    #
+    # 即"真实类别的概率取负对数"。数学含义：
+    #   - 如果网络很自信且正确（p_y → 1），则 -log(p_y) → 0（损失小）
+    #   - 如果网络很自信但错误（p_y → 0），则 -log(p_y) → +∞（损失大）
+    #
+    # 【概率角度（对你来说是重点）】
+    # 最小化 -log(p_y) 等价于最大化 p_y，也就是最大化"网络预测真实标签
+    # 的似然"——这正是统计里的最大似然估计 (MLE)！
+    # 把所有样本的 -log(p_y) 加起来求平均，就是负对数似然 (NLL)，
+    # 训练就是做 MLE：找到让观测数据（训练集）最可能的参数。
+    #
+    # 【一个重要的实现细节】
+    # PyTorch 的 CrossEntropyLoss = softmax + 负对数似然，一步到位。
+    # 所以模型最后输出 logits 就行了，千万不要在模型里自己加 softmax
+    # （加了就会"softmax 两次"，数学上完全不对）。
+    # ----------------------------------------------------------------------
     loss_function = nn.CrossEntropyLoss()
+
+    # ----------------------------------------------------------------------
+    # 【优化器：梯度下降】
+    # 更新公式（对每个参数 w）：
+    #     w ← w - lr * ∂Loss/∂w
+    # 其中 ∂Loss/∂w 是损失对参数的偏导数（梯度），lr=0.001 是学习率
+    # （每次沿负梯度方向走多大步）。
+    # 直觉：梯度指向"损失增长最快的方向"，我们反着走，损失就会下降。
+    # 这本质上是求极小值的数值方法（相当于最速下降法）。
+    # Adam 是它的升级版：自动调整每个参数的学习率，收敛更快更稳，
+    # 可以理解成"带自适应步长 + 惯性（动量）的最速下降"。
+    # net.parameters() 把网络里所有待学习的参数（卷积核、权重矩阵）收集起来。
+    # ----------------------------------------------------------------------
     optimizer = optim.Adam(net.parameters(), lr=0.001)
 
-    for epoch in range(5):  # loop over the dataset multiple times
+    # ----------------------------------------------------------------------
+    # 【训练主循环】
+    # epoch（轮）：把整个训练集完整过一遍 = 1 个 epoch。
+    # step（步）/batch（批）：处理一个 batch 的 36 张图 = 1 步。
+    # 这里跑 5 轮：5 万张 / 36 张 ≈ 每轮 1389 步，共约 7000 步。
+    # ----------------------------------------------------------------------
+    for epoch in range(5):  # range(5) 生成 0,1,2,3,4，所以共 5 轮
 
-        running_loss = 0.0
+        running_loss = 0.0  # 累加最近 500 步的损失，用来打印平均损失
+
+        # 【Python 知识：enumerate】
+        # enumerate(可迭代对象, start=0)：一边遍历一边给元素编号。
+        # 这里 data 依次是 loader 吐出来的每个 batch，
+        # step 是这个 batch 的编号（0, 1, 2, ...），start=0 表示从 0 开始编号。
         for step, data in enumerate(train_loader, start=0):
-            # get the inputs; data is a list of [inputs, labels]
+            # data 是一个列表 [inputs, labels]：
+            #   inputs: 36 张图片，形状 [36, 3, 32, 32]
+            #   labels: 36 个真实类别编号，形状 [36]（每个是 0~9 的整数）
+            # 【Python 知识：元组解包】一行代码同时取出两个变量。
             inputs, labels = data
 
-            # zero the parameter gradients
+            # ------------------------------------------------------------------
+            # 【为什么每次都要 zero_grad？】
+            # PyTorch 默认是"梯度累加"的：每次 backward 求出的梯度会
+            # 叠加到之前的值上。如果不清零，梯度会越攒越多，参数更新就错了。
+            # 所以每步开始前必须把梯度清零，相当于把计数器归零。
+            # ------------------------------------------------------------------
             optimizer.zero_grad()
-            # forward + backward + optimize
-            outputs = net(inputs)
-            loss = loss_function(outputs, labels)
-            loss.backward()
-            optimizer.step()
 
-            # print statistics
-            running_loss += loss.item()
-            if step % 500 == 499:    # print every 500 mini-batches
+            # forward + backward + optimize（训练三步曲）
+            outputs = net(inputs)          # ① 前向：算出 36 张图的预测得分 [36, 10]
+            loss = loss_function(outputs, labels)  # ② 算损失：预测和真实标签差多少
+            loss.backward()                # ③ 反向传播：用链式法则算出每个参数的梯度
+            optimizer.step()               # ④ 更新参数：w ← w - lr * 梯度
+
+            # ------------------------------------------------------------------
+            # 【backward 的数学本质（你会感兴趣的）】
+            # 损失 Loss 是"最后一层的输出"的函数，最后一层的输出又是
+            # "前一层的输出"的函数…… 一层套一层（复合函数）。
+            # 用链式法则从输出层往回一层层求偏导，就能得到
+            # Loss 对每一层参数的梯度 ∂Loss/∂w。这就是"反向传播"名字的来历：
+            # 误差从输出端一路"传"回输入端。
+            # ------------------------------------------------------------------
+
+            # print statistics（打印统计信息）
+            running_loss += loss.item()    # loss.item() 把张量变成普通 Python 数字
+            if step % 500 == 499:    # print every 500 mini-batches（每 500 步打印一次）
+
+                # ------------------------------------------------------------------
+                # 【验证：测当前网络在验证集上的准确率】
+                # torch.no_grad()：一个"上下文"，里面不计算梯度。
+                # 验证阶段只想知道预测结果，不需要梯度，
+                # 关掉能省内存、加速（否则会白算一大堆偏导数）。
+                # with 是 Python 的上下文管理器语法，照抄即可。
+                # ------------------------------------------------------------------
                 with torch.no_grad():
-                    outputs = net(val_image)  # [batch, 10]
-                    predict_y = torch.max(outputs, dim=1)[1]
+                    outputs = net(val_image)  # [batch, 10]：5000 张验证图的得分
+
+                    # 【argmax：概率角度】
+                    # torch.max(outputs, dim=1) 在"第 1 维"（10 个类别的维度）上
+                    # 找最大值，返回 (最大值, 最大值所在的位置下标)。
+                    # [1] 表示取下标部分 → 得到每张图"得分最高的类别编号"。
+                    # 由于得分经 softmax 后单调对应概率，得分最高 = 概率最大，
+                    # 所以这就是"概率最大的类别"，统计上叫最大后验决策 (MAP)，
+                    # 直观上就是"网络最相信的答案"。
+                    predict_y = torch.max(outputs, dim=1)[1]  # 形状 [5000]
+
+                    # torch.eq(a, b)：逐元素比较是否相等，返回 True/False 张量。
+                    # .sum()：数一数有多少个 True（即预测对的张数）。
+                    # 除以总张数 5000 → 正确率 = 预测对的张数 / 总张数。
+                    # 从概率角度看：用"频率"估计"正确概率 P(预测 = 真实)"，
+                    # 这就是大数定律的思想——样本多了，频率趋近概率。
                     accuracy = torch.eq(predict_y, val_label).sum().item() / val_label.size(0)
 
                     print('[%d, %5d] train_loss: %.3f  test_accuracy: %.3f' %
                           (epoch + 1, step + 1, running_loss / 500, accuracy))
-                    running_loss = 0.0
+                    running_loss = 0.0  # 打印完就把累计损失清零，重新累计下 500 步
 
     print('Finished Training')
 
+    # ----------------------------------------------------------------------
+    # 保存模型：只保存"学到的参数"（state_dict = 参数字典），不保存结构。
+    # 之后预测时用 model.py 里的 LeNet() 重建结构，再 load_state_dict 把
+    # 参数装回去即可（见 predict.py）。
+    # ----------------------------------------------------------------------
     save_path = './Lenet.pth'
     torch.save(net.state_dict(), save_path)
 
 
+# --------------------------------------------------------------------------
+# 【Python 知识：if __name__ == '__main__'】
+# 每个 .py 文件被直接运行时，Python 会把它内置的 __name__ 变量设为
+# '__main__'；如果这个文件是被别的文件 import（比如 predict.py 里
+# from model import LeNet），则 __name__ 是模块名，不会执行这里的代码。
+# 这样写可以保证：只有"直接运行本文件"时才执行 main()。
+# --------------------------------------------------------------------------
 if __name__ == '__main__':
     main()

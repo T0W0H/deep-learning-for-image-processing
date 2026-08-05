@@ -84,10 +84,12 @@ def main():
         # .numpy() 把张量转成 numpy 数组（更"轻"的 Python 数据结构）。
         # ------------------------------------------------------------------
         predict = torch.max(outputs, dim=1)[1].numpy()
+        predict1 = torch.softmax(outputs, dim=1)
 
     # predict 是数组，长度 1（只有一张图），predict[0] 就是类别编号
     # classes[编号] 取出类别名并打印，比如 "cat"
     print(classes[int(predict)])
+    print(predict1)
 
 
 if __name__ == '__main__':

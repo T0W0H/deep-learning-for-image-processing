@@ -122,11 +122,13 @@ def main():
     #         统计正确率。sparse 同样是说标签是整数 0~9。
     # ----------------------------------------------------------------------
     train_loss = tf.keras.metrics.Mean(name='train_loss')
-    train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
+    train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
+        name='train_accuracy')
 
     # 测试集的指标（同样一份，但只在测试时用）
     test_loss = tf.keras.metrics.Mean(name='test_loss')
-    test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='test_accuracy')
+    test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
+        name='test_accuracy')
 
     # ----------------------------------------------------------------------
     # 【@tf.function 装饰器】

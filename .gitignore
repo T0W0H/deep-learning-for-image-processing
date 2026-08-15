@@ -2,9 +2,11 @@
 *.idea
 __pycache__
 *.zip
+*.tgz
 flower_data
 *.h5
 *.pth
+*.vscode
 *.pt
 *.jpg
 *.ckpt.*

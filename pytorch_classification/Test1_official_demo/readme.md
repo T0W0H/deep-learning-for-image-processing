@@ -1,4 +1,4 @@
-创建python3.7环境后需要进行如下操作
+创建python3.7cpu环境后需要进行如下操作
 
 ```bash
 pip install pillow==6.2.1

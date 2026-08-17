@@ -67,12 +67,19 @@ pip install torch==2.1.1+cu121 torchvision==0.16.1+cu121 \
 
 ```bash
 conda activate dl_env
-mamba install "cudatoolkit=11.2.2" "cudnn=8.4.1.50" -y
+mamba install "cudatoolkit=11.2.2" "cudnn=8.4.1.50" "h5py=3.11.0" "numpy=1.23.5" -y
 pip install "tensorflow==2.11.0"
 ```
 
 > 说明: conda 会把 cudatoolkit/cudnn 装进 `$CONDA_PREFIX/lib`,
 > TF 通过 LD_LIBRARY_PATH 找到它们 (见 Step 8)。
+>
+> ⚠️ **h5py 必须锁 3.11.0 (关键修复!)**: 新版 h5py (3.12+, 如 3.16) 已无
+> Python 3.10 的预编译 wheel, pip 会现场源码编译并失败
+> (`Failed to build wheel for h5py`, 需要 HDF5 头文件)。
+> 且 mamba 单独装 h5py 时会把 numpy 解析到 2.2.6 (会破坏 TF),
+> 必须在同一条命令里锁 `numpy=1.23.5`。
+> h5py 3.11.0 满足 TF 2.11 的 `h5py>=2.9.0` 约束, pip 装 TF 时不会覆盖它。
 
 ---
 
@@ -119,9 +126,13 @@ pip install thop                    # model_complexity 章节 FLOPs
 ## Step 8: 环境变量 (写入 ~/.bashrc 使其永久生效)
 
 ```bash
-grep -q 'CONDA_PREFIX/lib' ~/.bashrc || echo 'export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"' >> ~/.bashrc
+grep -q 'CONDA_PREFIX/lib' ~/.bashrc || echo 'export LD_LIBRARY_PATH="/root/miniforge3/envs/dl_env/lib/python3.10/site-packages/tensorrt:$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
+
+> 说明: 固定把 TRT 目录 + conda 库目录写进 `LD_LIBRARY_PATH`,
+> 这样 Step 6 的 tensorrt 与 Step 5 的 TF/PT 开箱即用。
+> 若换了 env 路径, 改这一行的两个路径即可。
 
 ---
 
@@ -234,3 +245,7 @@ python -c "import cv2, xgboost, lightgbm, catboost, onnx, onnxruntime, spacy, nl
 8. **装包后必查**: 任何 `pip install` 装完跑一遍 `pip check`, 若报 protobuf 相关冲突,
    立即 `pip install "protobuf==3.19.6"` 修复, 不要忽略 pip 的 conflict 警告
    (pip 会明知冲突仍强行安装)。
+9. **h5py 必须保持 3.11.0**: 新版 h5py (3.12+/3.16) 没有 Python 3.10 的预编译 wheel,
+   pip 只能源码编译 (`Failed to build wheel for h5py`)。且通过 mamba/pip 装新 h5py 会把
+   numpy 拉到 2.x (破坏 TF)。装任何新包后若 TF 报错或 h5py 被升级, 修复:
+   `mamba install "h5py=3.11.0" "numpy=1.23.5" -y`。

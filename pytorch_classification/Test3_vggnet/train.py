@@ -12,7 +12,8 @@ from model import vgg  # 导入自定义VGG模型
 
 
 def main():
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # 选择设备(GPU/CPU)
+    device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "cpu")  # 选择设备(GPU/CPU)
     print("using {} device.".format(device))  # 打印设备信息
 
     data_transform = {  # 不同阶段的预处理
@@ -24,23 +25,30 @@ def main():
                                    transforms.ToTensor(),  # 转为张量
                                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])}  # 归一化
 
-    data_root = os.path.abspath(os.path.join(os.getcwd(), "../.."))  # get data root path 获取数据根目录
-    image_path = os.path.join(data_root, "data_set", "flower_data")  # flower data set path 花朵数据集路径
-    assert os.path.exists(image_path), "{} path does not exist.".format(image_path)  # 校验路径存在
+    # get data root path 获取数据根目录
+    data_root = os.path.abspath(os.path.join(os.getcwd(), "../.."))
+    # flower data set path 花朵数据集路径
+    image_path = os.path.join(data_root, "data_set", "flower_data")
+    assert os.path.exists(image_path), "{} path does not exist.".format(
+        image_path)  # 校验路径存在
     train_dataset = datasets.ImageFolder(root=os.path.join(image_path, "train"),  # 加载训练集
                                          transform=data_transform["train"])  # 使用训练预处理
     train_num = len(train_dataset)  # 训练集图片数量
 
     # {'daisy':0, 'dandelion':1, 'roses':2, 'sunflower':3, 'tulips':4}
     flower_list = train_dataset.class_to_idx  # 类别名->索引映射
-    cla_dict = dict((val, key) for key, val in flower_list.items())  # 反转字典(索引->类别名)
+    cla_dict = dict((val, key)
+                    for key, val in flower_list.items())  # 反转字典(索引->类别名)
     # write dict into json file
     json_str = json.dumps(cla_dict, indent=4)  # 转成格式化JSON字符串
     with open('class_indices.json', 'w') as json_file:  # 写入json文件
         json_file.write(json_str)  # 保存类别索引
 
     batch_size = 32  # 批大小
-    nw = min([os.cpu_count(), batch_size if batch_size > 1 else 0, 8])  # number of workers 数据加载线程数
+    batch_size = 1
+    # number of workers 数据加载线程数
+    nw = min([os.cpu_count(), batch_size if batch_size > 1 else 0, 8])
+    nw = 0
     print('Using {} dataloader workers every process'.format(nw))  # 打印线程数
 
     train_loader = torch.utils.data.DataLoader(train_dataset,  # 构建训练数据加载器
@@ -60,7 +68,9 @@ def main():
     # test_image, test_label = test_data_iter.next()
 
     model_name = "vgg16"  # 模型名称
-    net = vgg(model_name=model_name, num_classes=5, init_weights=True)  # 创建VGG16(5类)
+    model_name = "vgg11"
+    net = vgg(model_name=model_name, num_classes=5,
+              init_weights=True)  # 创建VGG16(5类)
     net.to(device)  # 模型转到设备
     loss_function = nn.CrossEntropyLoss()  # 交叉熵损失函数
     optimizer = optim.Adam(net.parameters(), lr=0.0001)  # Adam优化器
@@ -98,7 +108,8 @@ def main():
                 val_images, val_labels = val_data  # 解包数据
                 outputs = net(val_images.to(device))  # 前向传播
                 predict_y = torch.max(outputs, dim=1)[1]  # 取每行最大值的索引作为预测类别
-                acc += torch.eq(predict_y, val_labels.to(device)).sum().item()  # 统计预测正确的个数
+                acc += torch.eq(predict_y, val_labels.to(device)
+                                ).sum().item()  # 统计预测正确的个数
 
         val_accurate = acc / val_num  # 计算验证准确率
         print('[epoch %d] train_loss: %.3f  val_accuracy: %.3f' %  # 打印本epoch结果

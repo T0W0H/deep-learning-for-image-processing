@@ -15,11 +15,13 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("using {} device.".format(device))
 
+    # 训练集数据增强预处理: 随机裁剪、水平翻转、归一化
     data_transform = {
         "train": transforms.Compose([transforms.RandomResizedCrop(224),
                                      transforms.RandomHorizontalFlip(),
                                      transforms.ToTensor(),
                                      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]),
+        # 验证集预处理: 固定尺寸缩放、归一化
         "val": transforms.Compose([transforms.Resize((224, 224)),
                                    transforms.ToTensor(),
                                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])}
@@ -55,7 +57,7 @@ def main():
                                                   num_workers=nw)
 
     print("using {} images for training, {} images for validation.".format(train_num,
-                                                                           val_num))
+                                                                            val_num))
 
     # test_data_iter = iter(validate_loader)
     # test_image, test_label = test_data_iter.next()
@@ -90,11 +92,11 @@ def main():
         for step, data in enumerate(train_bar):
             images, labels = data
             optimizer.zero_grad()
-            logits, aux_logits2, aux_logits1 = net(images.to(device))
-            loss0 = loss_function(logits, labels.to(device))
-            loss1 = loss_function(aux_logits1, labels.to(device))
-            loss2 = loss_function(aux_logits2, labels.to(device))
-            loss = loss0 + loss1 * 0.3 + loss2 * 0.3
+            logits, aux_logits2, aux_logits1 = net(images.to(device))  # 主输出 + 两个辅助输出
+            loss0 = loss_function(logits, labels.to(device))           # 主输出损失
+            loss1 = loss_function(aux_logits1, labels.to(device))      # 辅助损失1
+            loss2 = loss_function(aux_logits2, labels.to(device))      # 辅助损失2
+            loss = loss0 + loss1 * 0.3 + loss2 * 0.3                   # 联合损失
             loss.backward()
             optimizer.step()
 

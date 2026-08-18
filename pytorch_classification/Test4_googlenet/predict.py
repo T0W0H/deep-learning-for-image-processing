@@ -12,6 +12,7 @@ from model import GoogLeNet
 def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+    # 推理预处理: 缩放到 224x224, 转为张量, 归一化
     data_transform = transforms.Compose(
         [transforms.Resize((224, 224)),
          transforms.ToTensor(),
@@ -24,7 +25,7 @@ def main():
     plt.imshow(img)
     # [N, C, H, W]
     img = data_transform(img)
-    # expand batch dimension
+    # expand batch dimension 扩展为 [1, C, H, W]
     img = torch.unsqueeze(img, dim=0)
 
     # read class_indict
@@ -34,7 +35,7 @@ def main():
     with open(json_path, "r") as f:
         class_indict = json.load(f)
 
-    # create model
+    # create model (关闭辅助分类器)
     model = GoogLeNet(num_classes=5, aux_logits=False).to(device)
 
     # load model weights
@@ -43,12 +44,12 @@ def main():
     missing_keys, unexpected_keys = model.load_state_dict(torch.load(weights_path, map_location=device),
                                                           strict=False)
 
-    model.eval()
+    model.eval()  # 切换到评估模式
     with torch.no_grad():
         # predict class
-        output = torch.squeeze(model(img.to(device))).cpu()
-        predict = torch.softmax(output, dim=0)
-        predict_cla = torch.argmax(predict).numpy()
+        output = torch.squeeze(model(img.to(device))).cpu()  # 模型前向传播
+        predict = torch.softmax(output, dim=0)  # 计算 softmax 概率
+        predict_cla = torch.argmax(predict).numpy()  # 取最大概率类别
 
     print_res = "class: {}   prob: {:.3}".format(class_indict[str(predict_cla)],
                                                  predict[predict_cla].numpy())

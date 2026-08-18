@@ -40,54 +40,34 @@ class GoogLeNet(nn.Module):
             self._initialize_weights()
 
     def forward(self, x):
-        # N x 3 x 224 x 224
-        x = self.conv1(x)
-        # N x 64 x 112 x 112
-        x = self.maxpool1(x)
-        # N x 64 x 56 x 56
-        x = self.conv2(x)
-        # N x 64 x 56 x 56
-        x = self.conv3(x)
-        # N x 192 x 56 x 56
-        x = self.maxpool2(x)
+        x = self.conv1(x)      # 7x7 卷积, stride=2, 输出 112x112
+        x = self.maxpool1(x)   # 3x3 最大池化, stride=2, 输出 56x56
+        x = self.conv2(x)      # 1x1 卷积, 输出 56x56
+        x = self.conv3(x)      # 3x3 卷积, 输出 56x56
+        x = self.maxpool2(x)   # 最大池化, 输出 28x28
 
-        # N x 192 x 28 x 28
-        x = self.inception3a(x)
-        # N x 256 x 28 x 28
-        x = self.inception3b(x)
-        # N x 480 x 28 x 28
-        x = self.maxpool3(x)
-        # N x 480 x 14 x 14
-        x = self.inception4a(x)
-        # N x 512 x 14 x 14
+        x = self.inception3a(x) # 输出 256x28x28
+        x = self.inception3b(x) # 输出 480x28x28
+        x = self.maxpool3(x)    # 输出 480x14x14
+        x = self.inception4a(x) # 输出 512x14x14
         if self.training and self.aux_logits:    # eval model lose this layer
             aux1 = self.aux1(x)
 
-        x = self.inception4b(x)
-        # N x 512 x 14 x 14
-        x = self.inception4c(x)
-        # N x 512 x 14 x 14
-        x = self.inception4d(x)
-        # N x 528 x 14 x 14
+        x = self.inception4b(x) # 输出 512x14x14
+        x = self.inception4c(x) # 输出 512x14x14
+        x = self.inception4d(x) # 输出 528x14x14
         if self.training and self.aux_logits:    # eval model lose this layer
             aux2 = self.aux2(x)
 
-        x = self.inception4e(x)
-        # N x 832 x 14 x 14
-        x = self.maxpool4(x)
-        # N x 832 x 7 x 7
-        x = self.inception5a(x)
-        # N x 832 x 7 x 7
-        x = self.inception5b(x)
-        # N x 1024 x 7 x 7
+        x = self.inception4e(x) # 输出 832x14x14
+        x = self.maxpool4(x)    # 输出 832x7x7
+        x = self.inception5a(x) # 输出 832x7x7
+        x = self.inception5b(x) # 输出 1024x7x7
 
-        x = self.avgpool(x)
-        # N x 1024 x 1 x 1
-        x = torch.flatten(x, 1)
-        # N x 1024
-        x = self.dropout(x)
-        x = self.fc(x)
-        # N x 1000 (num_classes)
+        x = self.avgpool(x)     # 自适应平均池化, 输出 1024x1x1
+        x = torch.flatten(x, 1) # 展平为 1024
+        x = self.dropout(x)     # Dropout 防过拟合
+        x = self.fc(x)          # 全连接层, 输出 num_classes
         if self.training and self.aux_logits:   # eval model lose this layer
             return x, aux2, aux1
         return x
@@ -107,23 +87,23 @@ class Inception(nn.Module):
     def __init__(self, in_channels, ch1x1, ch3x3red, ch3x3, ch5x5red, ch5x5, pool_proj):
         super(Inception, self).__init__()
 
-        self.branch1 = BasicConv2d(in_channels, ch1x1, kernel_size=1)
+        self.branch1 = BasicConv2d(in_channels, ch1x1, kernel_size=1) # 1x1 卷积分支
 
         self.branch2 = nn.Sequential(
-            BasicConv2d(in_channels, ch3x3red, kernel_size=1),
-            BasicConv2d(ch3x3red, ch3x3, kernel_size=3, padding=1)   # 保证输出大小等于输入大小
+            BasicConv2d(in_channels, ch3x3red, kernel_size=1),    # 降维 1x1 卷积
+            BasicConv2d(ch3x3red, ch3x3, kernel_size=3, padding=1)   # 3x3 卷积, 保证输出大小等于输入大小
         )
 
         self.branch3 = nn.Sequential(
-            BasicConv2d(in_channels, ch5x5red, kernel_size=1),
+            BasicConv2d(in_channels, ch5x5red, kernel_size=1),    # 降维 1x1 卷积
             # 在官方的实现中，其实是3x3的kernel并不是5x5，这里我也懒得改了，具体可以参考下面的issue
             # Please see https://github.com/pytorch/vision/issues/906 for details.
-            BasicConv2d(ch5x5red, ch5x5, kernel_size=5, padding=2)   # 保证输出大小等于输入大小
+            BasicConv2d(ch5x5red, ch5x5, kernel_size=5, padding=2)   # 5x5 卷积, 保证输出大小等于输入大小
         )
 
         self.branch4 = nn.Sequential(
-            nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
-            BasicConv2d(in_channels, pool_proj, kernel_size=1)
+            nn.MaxPool2d(kernel_size=3, stride=1, padding=1),   # 3x3 最大池化, 保证输出大小等于输入大小
+            BasicConv2d(in_channels, pool_proj, kernel_size=1)  # 1x1 卷积
         )
 
     def forward(self, x):
@@ -133,7 +113,7 @@ class Inception(nn.Module):
         branch4 = self.branch4(x)
 
         outputs = [branch1, branch2, branch3, branch4]
-        return torch.cat(outputs, 1)
+        return torch.cat(outputs, 1)  # 在通道维度拼接所有分支
 
 
 class InceptionAux(nn.Module):
@@ -146,19 +126,13 @@ class InceptionAux(nn.Module):
         self.fc2 = nn.Linear(1024, num_classes)
 
     def forward(self, x):
-        # aux1: N x 512 x 14 x 14, aux2: N x 528 x 14 x 14
-        x = self.averagePool(x)
-        # aux1: N x 512 x 4 x 4, aux2: N x 528 x 4 x 4
-        x = self.conv(x)
-        # N x 128 x 4 x 4
-        x = torch.flatten(x, 1)
+        x = self.averagePool(x)    # 平均池化, 输出 128x4x4
+        x = self.conv(x)           # 1x1 卷积, 输出 128x4x4
+        x = torch.flatten(x, 1)    # 展平为 2048
         x = F.dropout(x, 0.5, training=self.training)
-        # N x 2048
-        x = F.relu(self.fc1(x), inplace=True)
+        x = F.relu(self.fc1(x), inplace=True)  # ReLU 激活
         x = F.dropout(x, 0.5, training=self.training)
-        # N x 1024
-        x = self.fc2(x)
-        # N x num_classes
+        x = self.fc2(x)            # 输出 num_classes
         return x
 
 
